@@ -50,21 +50,22 @@ fn shift_sw(x: u64) -> u64 {
     (x & NOT_A_FILE) >> 9
 }
 
-macro_rules! flip_loop_dir {
+macro_rules! flip_unrolled_dir {
     ($move_bit:expr, $me:expr, $opp:expr, $shift:ident) => {{
-        let mut mask = $shift($move_bit);
-        let mut flipped = 0_u64;
-
-        // early-exit loop, but fully inlinable shift
-        while (mask & $opp) != 0 {
-            flipped |= mask;
-            mask = $shift(mask);
-        }
-
-        if (mask & $me) != 0 {
-            flipped
-        } else {
+        let mut x = $shift($move_bit) & $opp;
+        if x == 0 {
             0
+        } else {
+            x |= $shift(x) & $opp;
+            x |= $shift(x) & $opp;
+            x |= $shift(x) & $opp;
+            x |= $shift(x) & $opp;
+            x |= $shift(x) & $opp;
+            if ($shift(x) & $me) != 0 {
+                x
+            } else {
+                0
+            }
         }
     }};
 }
@@ -82,14 +83,14 @@ pub fn apply_move_unchecked(
         (black, white)
     };
 
-    let flip_mask = flip_loop_dir!(move_bit, me, opp, shift_north)
-        | flip_loop_dir!(move_bit, me, opp, shift_south)
-        | flip_loop_dir!(move_bit, me, opp, shift_east)
-        | flip_loop_dir!(move_bit, me, opp, shift_west)
-        | flip_loop_dir!(move_bit, me, opp, shift_ne)
-        | flip_loop_dir!(move_bit, me, opp, shift_nw)
-        | flip_loop_dir!(move_bit, me, opp, shift_se)
-        | flip_loop_dir!(move_bit, me, opp, shift_sw);
+    let flip_mask = flip_unrolled_dir!(move_bit, me, opp, shift_north)
+        | flip_unrolled_dir!(move_bit, me, opp, shift_south)
+        | flip_unrolled_dir!(move_bit, me, opp, shift_east)
+        | flip_unrolled_dir!(move_bit, me, opp, shift_west)
+        | flip_unrolled_dir!(move_bit, me, opp, shift_ne)
+        | flip_unrolled_dir!(move_bit, me, opp, shift_nw)
+        | flip_unrolled_dir!(move_bit, me, opp, shift_se)
+        | flip_unrolled_dir!(move_bit, me, opp, shift_sw);
 
     debug_assert!(flip_mask != 0);
 
