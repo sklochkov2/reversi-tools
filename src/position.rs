@@ -224,6 +224,7 @@ pub fn compute_moves(me: u64, opp: u64) -> u64 {
     moves
 }
 
+#[inline(always)]
 pub fn check_game_status(white: u64, black: u64, is_white_move: bool) -> u64 {
     let (me, opp) = if is_white_move {
         (white, black)
