@@ -1,24 +1,3 @@
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct RichPosition {
-    pub black: u64,
-    pub white: u64,
-    pub white_to_move: bool,
-    pub flips: u64,
-    pub last_move: u64,
-}
-
-impl Default for RichPosition {
-    fn default() -> Self {
-        RichPosition {
-            black: 0x0000000810000000u64,
-            white: 0x0000001008000000u64,
-            white_to_move: false,
-            flips: 0,
-            last_move: 0,
-        }
-    }
-}
-
 fn flip_in_dir(move_bit: u64, me: u64, opp: u64, shift: fn(u64) -> u64) -> u64 {
     let mut mask = shift(move_bit);
     let mut flipped = 0_u64;
@@ -71,16 +50,21 @@ fn shift_sw(x: u64) -> u64 {
     (x & NOT_A_FILE) >> 9
 }
 
-pub fn apply_move(pos: RichPosition, move_bit: u64) -> Result<RichPosition, &'static str> {
-    let occupied = pos.white | pos.black;
+pub fn apply_move(
+    white: u64,
+    black: u64,
+    move_bit: u64,
+    is_white_move: bool,
+) -> Result<(u64, u64), &'static str> {
+    let occupied = white | black;
     if (move_bit & occupied) != 0 {
         return Err("Square already occupied");
     }
 
-    let (me, opp) = if pos.white_to_move {
-        (pos.white, pos.black)
+    let (me, opp) = if is_white_move {
+        (white, black)
     } else {
-        (pos.black, pos.white)
+        (black, white)
     };
 
     let mut flip_mask = 0_u64;
@@ -100,22 +84,10 @@ pub fn apply_move(pos: RichPosition, move_bit: u64) -> Result<RichPosition, &'st
     let new_me = me | move_bit | flip_mask;
     let new_opp = opp & !flip_mask;
 
-    if pos.white_to_move {
-        Ok(RichPosition {
-            white: new_me,
-            black: new_opp,
-            white_to_move: !pos.white_to_move,
-            flips: flip_mask,
-            last_move: move_bit,
-        })
+    if is_white_move {
+        Ok((new_me, new_opp))
     } else {
-        Ok(RichPosition {
-            black: new_me,
-            white: new_opp,
-            white_to_move: !pos.white_to_move,
-            flips: flip_mask,
-            last_move: move_bit,
-        })
+        Ok((new_opp, new_me))
     }
 }
 
@@ -198,11 +170,11 @@ pub fn compute_moves(me: u64, opp: u64) -> u64 {
     moves
 }
 
-pub fn check_game_status(pos: RichPosition) -> u64 {
-    let (me, opp) = if pos.white_to_move {
-        (pos.white, pos.black)
+pub fn check_game_status(white: u64, black: u64, is_white_move: bool) -> u64 {
+    let (me, opp) = if is_white_move {
+        (white, black)
     } else {
-        (pos.black, pos.white)
+        (black, white)
     };
     let my_moves: u64 = compute_moves(me, opp);
     if my_moves > 0 {
@@ -212,8 +184,8 @@ pub fn check_game_status(pos: RichPosition) -> u64 {
     if opp_moves > 0 {
         return u64::MAX;
     }
-    let white_count = pos.white.count_ones();
-    let black_count = pos.black.count_ones();
+    let white_count = white.count_ones();
+    let black_count = black.count_ones();
 
     if white_count > black_count {
         return u64::MAX - 2;
@@ -369,22 +341,32 @@ mod tests {
 
     #[test]
     fn test_apply_move() {
-        let test_pos = RichPosition {
-            white: 35253361508352,
-            black: 171935537184,
-            white_to_move: true,
-            flips: 0,
-            last_move: 0,
-        };
-        let c4_move = apply_move(test_pos, move_to_bitmap("c4").unwrap()).unwrap();
-        assert_eq!(c4_move.white, 35253562834944);
-        assert_eq!(c4_move.black, 171801319456);
         assert_eq!(
-            apply_move(test_pos, move_to_bitmap("a1").unwrap(),),
+            apply_move(
+                35253361508352,
+                171935537184,
+                move_to_bitmap("c4").unwrap(),
+                true
+            )
+            .unwrap(),
+            (35253562834944, 171801319456)
+        );
+        assert_eq!(
+            apply_move(
+                35253361508352,
+                171935537184,
+                move_to_bitmap("a1").unwrap(),
+                true
+            ),
             Err("No flips!")
         );
         assert_eq!(
-            apply_move(test_pos, move_to_bitmap("a3").unwrap(),),
+            apply_move(
+                35253361508352,
+                171935537184,
+                move_to_bitmap("a3").unwrap(),
+                true
+            ),
             Err("Square already occupied")
         );
     }
@@ -463,17 +445,10 @@ mod tests {
         let white = (1 << 27) | (1 << 36); // (3,3) and (4,4)
         let black = (1 << 28) | (1 << 35); // (3,4) and (4,3)
         let is_white_move = true;
-        let test_pos = RichPosition {
-            white: white,
-            black: black,
-            white_to_move: is_white_move,
-            flips: 0,
-            last_move: 0,
-        };
 
         let expected_moves = (1 << 20) | (1 << 29) | (1 << 34) | (1 << 43);
 
-        let status = check_game_status(test_pos);
+        let status = check_game_status(white, black, is_white_move);
         assert_eq!(
             status, expected_moves,
             "Expected White's standard opening moves, got something else."
@@ -486,15 +461,8 @@ mod tests {
         let black = 0x0000_0000_0000_FFFFu64;
 
         let is_white_move = true;
-        let test_pos = RichPosition {
-            white: white,
-            black: black,
-            white_to_move: is_white_move,
-            flips: 0,
-            last_move: 0,
-        };
 
-        let status = check_game_status(test_pos);
+        let status = check_game_status(white, black, is_white_move);
         assert_eq!(
             status,
             u64::MAX,
@@ -507,15 +475,8 @@ mod tests {
         let white = 14260085270048145407;
         let black = 67108864;
         let is_white_move = true;
-        let test_pos = RichPosition {
-            white: white,
-            black: black,
-            white_to_move: is_white_move,
-            flips: 0,
-            last_move: 0,
-        };
 
-        let status = check_game_status(test_pos);
+        let status = check_game_status(white, black, is_white_move);
         assert_eq!(
             status,
             u64::MAX - 2,
@@ -529,16 +490,9 @@ mod tests {
         let black = 14260085270048145407;
 
         let is_white_move = false;
-        let test_pos = RichPosition {
-            white: white,
-            black: black,
-            white_to_move: is_white_move,
-            flips: 0,
-            last_move: 0,
-        };
         //print_board(white, black, 0, 0, false);
 
-        let status = check_game_status(test_pos);
+        let status = check_game_status(white, black, is_white_move);
         assert_eq!(
             status,
             u64::MAX - 1,
@@ -552,14 +506,8 @@ mod tests {
         let black = 0xFFFF_FFFF_0000_0000u64; // exactly 32 bits set
 
         let is_white_move = true; // or false, same result if no moves remain.
-        let test_pos = RichPosition {
-            white: white,
-            black: black,
-            white_to_move: is_white_move,
-            flips: 0,
-            last_move: 0,
-        };
-        let status = check_game_status(test_pos);
+
+        let status = check_game_status(white, black, is_white_move);
         assert_eq!(
             status,
             u64::MAX - 3,
@@ -572,17 +520,10 @@ mod tests {
         let white = (1 << 27) | (1 << 36); // (3,3) and (4,4)
         let black = (1 << 28) | (1 << 35); // (3,4) and (4,3)
         let is_white_move = false; // black to move
-        let test_pos = RichPosition {
-            white: white,
-            black: black,
-            white_to_move: is_white_move,
-            flips: 0,
-            last_move: 0,
-        };
 
         let expected_moves = (1 << 19) | (1 << 26) | (1 << 37) | (1 << 44);
 
-        let status = check_game_status(test_pos);
+        let status = check_game_status(white, black, is_white_move);
         assert_eq!(
             status, expected_moves,
             "Expected black's moves in the standard opening, got something else."
