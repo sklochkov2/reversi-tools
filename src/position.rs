@@ -50,38 +50,24 @@ fn shift_sw(x: u64) -> u64 {
     (x & NOT_A_FILE) >> 9
 }
 
-macro_rules! define_flip_dir {
-    ($name:ident, $shift:ident) => {
-        #[inline(always)]
-        fn $name(move_bit: u64, me: u64, opp: u64) -> u64 {
-            // First adjacent squares in this direction that are opponent stones.
-            let mut x = $shift(move_bit) & opp;
+macro_rules! flip_loop_dir {
+    ($move_bit:expr, $me:expr, $opp:expr, $shift:ident) => {{
+        let mut mask = $shift($move_bit);
+        let mut flipped = 0_u64;
 
-            // Propagate up to 6 stones (max possible on 8x8 line).
-            x |= $shift(x) & opp;
-            x |= $shift(x) & opp;
-            x |= $shift(x) & opp;
-            x |= $shift(x) & opp;
-            x |= $shift(x) & opp;
-
-            // Valid flips only if bracketed by our stone at the far end.
-            if ($shift(x) & me) != 0 {
-                x
-            } else {
-                0
-            }
+        // early-exit loop, but fully inlinable shift
+        while (mask & $opp) != 0 {
+            flipped |= mask;
+            mask = $shift(mask);
         }
-    };
-}
 
-define_flip_dir!(flip_n, shift_north);
-define_flip_dir!(flip_s, shift_south);
-define_flip_dir!(flip_e, shift_east);
-define_flip_dir!(flip_w, shift_west);
-define_flip_dir!(flip_ne, shift_ne);
-define_flip_dir!(flip_nw, shift_nw);
-define_flip_dir!(flip_se, shift_se);
-define_flip_dir!(flip_sw, shift_sw);
+        if (mask & $me) != 0 {
+            flipped
+        } else {
+            0
+        }
+    }};
+}
 
 #[inline(always)]
 pub fn apply_move_unchecked(
@@ -96,14 +82,14 @@ pub fn apply_move_unchecked(
         (black, white)
     };
 
-    let flip_mask = flip_n(move_bit, me, opp)
-        | flip_s(move_bit, me, opp)
-        | flip_e(move_bit, me, opp)
-        | flip_w(move_bit, me, opp)
-        | flip_ne(move_bit, me, opp)
-        | flip_nw(move_bit, me, opp)
-        | flip_se(move_bit, me, opp)
-        | flip_sw(move_bit, me, opp);
+    let flip_mask = flip_loop_dir!(move_bit, me, opp, shift_north)
+        | flip_loop_dir!(move_bit, me, opp, shift_south)
+        | flip_loop_dir!(move_bit, me, opp, shift_east)
+        | flip_loop_dir!(move_bit, me, opp, shift_west)
+        | flip_loop_dir!(move_bit, me, opp, shift_ne)
+        | flip_loop_dir!(move_bit, me, opp, shift_nw)
+        | flip_loop_dir!(move_bit, me, opp, shift_se)
+        | flip_loop_dir!(move_bit, me, opp, shift_sw);
 
     debug_assert!(flip_mask != 0);
 
