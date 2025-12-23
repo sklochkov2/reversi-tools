@@ -50,6 +50,73 @@ fn shift_sw(x: u64) -> u64 {
     (x & NOT_A_FILE) >> 9
 }
 
+macro_rules! define_flip_dir {
+    ($name:ident, $shift:ident) => {
+        #[inline(always)]
+        fn $name(move_bit: u64, me: u64, opp: u64) -> u64 {
+            // First adjacent squares in this direction that are opponent stones.
+            let mut x = $shift(move_bit) & opp;
+
+            // Propagate up to 6 stones (max possible on 8x8 line).
+            x |= $shift(x) & opp;
+            x |= $shift(x) & opp;
+            x |= $shift(x) & opp;
+            x |= $shift(x) & opp;
+            x |= $shift(x) & opp;
+
+            // Valid flips only if bracketed by our stone at the far end.
+            if ($shift(x) & me) != 0 {
+                x
+            } else {
+                0
+            }
+        }
+    };
+}
+
+define_flip_dir!(flip_n, shift_north);
+define_flip_dir!(flip_s, shift_south);
+define_flip_dir!(flip_e, shift_east);
+define_flip_dir!(flip_w, shift_west);
+define_flip_dir!(flip_ne, shift_ne);
+define_flip_dir!(flip_nw, shift_nw);
+define_flip_dir!(flip_se, shift_se);
+define_flip_dir!(flip_sw, shift_sw);
+
+#[inline(always)]
+pub fn apply_move_unchecked(
+    white: u64,
+    black: u64,
+    move_bit: u64,
+    is_white_move: bool,
+) -> (u64, u64) {
+    let (me, opp) = if is_white_move {
+        (white, black)
+    } else {
+        (black, white)
+    };
+
+    let flip_mask = flip_n(move_bit, me, opp)
+        | flip_s(move_bit, me, opp)
+        | flip_e(move_bit, me, opp)
+        | flip_w(move_bit, me, opp)
+        | flip_ne(move_bit, me, opp)
+        | flip_nw(move_bit, me, opp)
+        | flip_se(move_bit, me, opp)
+        | flip_sw(move_bit, me, opp);
+
+    debug_assert!(flip_mask != 0);
+
+    let new_me = me | move_bit | flip_mask;
+    let new_opp = opp & !flip_mask;
+
+    if is_white_move {
+        (new_me, new_opp)
+    } else {
+        (new_opp, new_me)
+    }
+}
+
 pub fn apply_move(
     white: u64,
     black: u64,
