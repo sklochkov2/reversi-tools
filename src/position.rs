@@ -145,6 +145,7 @@ pub fn apply_move(
     }
 }
 
+#[inline(always)]
 pub fn compute_moves(me: u64, opp: u64) -> u64 {
     let empty = !(me | opp);
 
